@@ -113,6 +113,7 @@ class ReactSortableTree extends Component {
       searchMatches: [],
       searchFocusTreeIndex: null,
       dragging: false,
+      dragHoverDelayTimeout: null,
 
       // props that need to be used in gDSFP or static functions will be stored here
       instanceProps: {
@@ -130,6 +131,7 @@ class ReactSortableTree extends Component {
     this.endDrag = this.endDrag.bind(this);
     this.drop = this.drop.bind(this);
     this.handleDndMonitorChange = this.handleDndMonitorChange.bind(this);
+    this.handleDragHover = this.handleDragHover.bind(this);
   }
 
   componentDidMount() {
@@ -231,6 +233,42 @@ class ReactSortableTree extends Component {
     if (!monitor.isDragging() && this.state.draggingTreeData) {
       this.endDrag();
     }
+  }
+
+  handleDragHover() {
+    this.setState(({ draggingTreeData, instanceProps }) => {
+      // Fall back to the tree data if something is being dragged in from
+      //  an external element
+      const newDraggingTreeData = draggingTreeData || instanceProps.treeData;
+
+      const addedResult = memoizedInsertNode({
+        treeData: newDraggingTreeData,
+        newNode: draggedNode,
+        depth: draggedDepth,
+        minimumTreeIndex: draggedMinimumTreeIndex,
+        expandParent: true,
+        getNodeKey: this.props.getNodeKey,
+      });
+
+      const rows = this.getRows(addedResult.treeData);
+      const expandedParentPath = rows[addedResult.treeIndex].path;
+
+      return {
+        draggedNode,
+        draggedDepth,
+        draggedMinimumTreeIndex,
+        draggingTreeData: changeNodeAtPath({
+          treeData: newDraggingTreeData,
+          path: expandedParentPath.slice(0, -1),
+          newNode: ({ node }) => ({ ...node, expanded: true }),
+          getNodeKey: this.props.getNodeKey,
+        }),
+        // reset the scroll focus so it doesn't jump back
+        // to a search result while dragging
+        searchFocusTreeIndex: null,
+        dragging: true,
+      };
+    });
   }
 
   toggleChildrenVisibility({ node: targetNode, path }) {
@@ -390,39 +428,15 @@ class ReactSortableTree extends Component {
       return;
     }
 
-    this.setState(({ draggingTreeData, instanceProps }) => {
-      // Fall back to the tree data if something is being dragged in from
-      //  an external element
-      const newDraggingTreeData = draggingTreeData || instanceProps.treeData;
+    // Ignore hover when disabled
+    if (this.props.dragHoverDelay < 0) return;
 
-      const addedResult = memoizedInsertNode({
-        treeData: newDraggingTreeData,
-        newNode: draggedNode,
-        depth: draggedDepth,
-        minimumTreeIndex: draggedMinimumTreeIndex,
-        expandParent: true,
-        getNodeKey: this.props.getNodeKey,
-      });
-
-      const rows = this.getRows(addedResult.treeData);
-      const expandedParentPath = rows[addedResult.treeIndex].path;
-
-      return {
-        draggedNode,
-        draggedDepth,
-        draggedMinimumTreeIndex,
-        draggingTreeData: changeNodeAtPath({
-          treeData: newDraggingTreeData,
-          path: expandedParentPath.slice(0, -1),
-          newNode: ({ node }) => ({ ...node, expanded: true }),
-          getNodeKey: this.props.getNodeKey,
-        }),
-        // reset the scroll focus so it doesn't jump back
-        // to a search result while dragging
-        searchFocusTreeIndex: null,
-        dragging: true,
-      };
-    });
+    if (this.props.dragHoverDelay == 0) {
+      handleDragHover();
+    } else {
+      clearTimeout(this.state.dragHoverDelayTimeout);
+      this.state.dragHoverDelayTimeout = setTimeout(handleDragHover, this.state.dragHoverDelay);
+    }
   }
 
   endDrag(dropResult) {
@@ -436,6 +450,8 @@ class ReactSortableTree extends Component {
         draggedDepth: null,
         dragging: false,
       });
+
+    clearTimeout(this.state.dragHoverDelayTimeout);
 
     // Drop was cancelled
     if (!dropResult) {
@@ -899,6 +915,9 @@ ReactSortableTree.propTypes = {
 
   // rtl support
   rowDirection: PropTypes.string,
+
+  // Negative disables the expand on hover, 0 is default behavior, positive is ms delay for expand on hover
+  dragHoverDelay: PropTypes.number,
 };
 
 ReactSortableTree.defaultProps = {
@@ -907,6 +926,7 @@ ReactSortableTree.defaultProps = {
   canNodeHaveChildren: () => true,
   className: '',
   dndType: null,
+  dragHoverDelay: 0,
   generateNodeProps: null,
   getNodeKey: defaultGetNodeKey,
   innerStyle: {},
