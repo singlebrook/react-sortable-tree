@@ -235,7 +235,11 @@ class ReactSortableTree extends Component {
     }
   }
 
-  handleDragHover() {
+  handleDragHover({
+    node: draggedNode,
+    depth: draggedDepth,
+    minimumTreeIndex: draggedMinimumTreeIndex,
+  }) {
     this.setState(({ draggingTreeData, instanceProps }) => {
       // Fall back to the tree data if something is being dragged in from
       //  an external element
@@ -431,11 +435,21 @@ class ReactSortableTree extends Component {
     // Ignore hover when disabled
     if (this.props.dragHoverDelay < 0) return;
 
-    if (this.props.dragHoverDelay == 0) {
-      handleDragHover();
+    if (this.props.dragHoverDelay === 0) {
+      this.handleDragHover({
+        draggedNode,
+        draggedDepth,
+        draggedMinimumTreeIndex
+      });
     } else {
       clearTimeout(this.state.dragHoverDelayTimeout);
-      this.state.dragHoverDelayTimeout = setTimeout(handleDragHover, this.state.dragHoverDelay);
+      this.state.dragHoverDelayTimeout = setTimeout(() => (
+          this.handleDragHover({
+            draggedNode,
+            draggedDepth,
+            draggedMinimumTreeIndex
+          })
+        ), this.state.dragHoverDelay);
     }
   }
 
